@@ -21,13 +21,30 @@ add_executable(server
     src/UserHandler.cc
     src/FileHandler.cc
     src/OssManager.cc
+    src/RabbitMQ.cc
 )
+
+add_executable(oss_consumer
+    src/OssWorker_Consumer.cc
+    src/OssManager.cc
+    src/RabbitMQ.cc
+    src/CryptoUtil.cc
+)
+
+target_include_directories(server PRIVATE include)
+
+target_include_directories(oss_consumer PRIVATE include)
 
 # 设置编译选项
 # PRIVATE: 传播属性，一般填PRIVATE
 target_compile_options(server PRIVATE
     -g
     -fno-rtti
+)
+
+target_link_libraries(oss_consumer PRIVATE
+    crypto ssl jwt alibabacloud-oss-cpp-sdk
+    curl pthread SimpleAmqpClient
 )
 
 # -lcrypto -lssl -ljwt -lwfrest
@@ -39,4 +56,5 @@ target_link_libraries(server PRIVATE
     alibabacloud-oss-cpp-sdk
     curl
     pthread
+    SimpleAmqpClient
 )
