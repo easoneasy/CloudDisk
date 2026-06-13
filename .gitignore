@@ -69,3 +69,7 @@ Testing/
 .cache/
 
 *.json
+
+# 可执行文件
+server
+oss_consumer
