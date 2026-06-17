@@ -1,12 +1,19 @@
 #include "../include/CryptoUtil.h"
 #include "../include/UserHandler.h"
+#include "../include/userHandler.pb.h"
+#include "../include/userHandler.srpc.h"
+#include "../include/CloudDiskServer.h"
+#include "workflow/WFFacilities.h"
 #include <wfrest/HttpServer.h>
 #include <wfrest/HttpDef.h>
 #include <wfrest/HttpMsg.h>
 #include <wfrest/PathUtil.h>
 #include <wfrest/MysqlUtil.h>
 #include <nlohmann/json.hpp>
+#include <workflow/WFTaskFactory.h>
+#include <workflow/Workflow.h>
 
+using namespace srpc;
 using namespace std;
 using namespace wfrest;
 using namespace protocol;
@@ -14,6 +21,9 @@ using json = nlohmann::json;
 
 static const string DatabaseURL = "mysql://root:123456@localhost/CloudDisk";
 static const int RetryMax = 3;
+static const char* srpc_ip = "127.0.0.1"; // srpc服务器的IP地址
+static unsigned short srpc_port = 8001; // srpc服务器监听的端口
+
 
 // 辅助函数
 // 发送成功内容
@@ -38,9 +48,8 @@ static void send_error(HttpResp *resp,const int status_code,const string msg)
     resp->append_output_body(body.dump());
 }
 
-
 // 注册
-void register_handler(const HttpReq *req,HttpResp *resp)
+void register_handler(const HttpReq *req,HttpResp *resp,SeriesWork *series)
 {
     // 客户端发错格式(不是json格式)
     if(req->content_type() != wfrest::APPLICATION_JSON)
@@ -73,33 +82,67 @@ void register_handler(const HttpReq *req,HttpResp *resp)
         resp->append_output_body(msg.dump());
         return;
     }
-    // 随机生成盐值
-    string salt = CryptoUtil::generate_salt();
-    // 将盐值与密码哈希
-    string hashcode = CryptoUtil::hash_password(password, salt);
-    // 存入数据库，写一个sql语句
-    string sql = "insert into tbl_user (username,password,salt) values ('"
+    // 1. 创建srpc客户端
+    auto &srpcClient = CloudDiskServer::userSRPCClient();
+    // userHandler::SRPCClient client(srpc_ip, srpc_port);
+    // // 2. 创建SRPCClient任务
+    SRPCClientTask* task =srpcClient.create_Register_task([resp](RegisterResponse *response, srpc::RPCContext *context){
+        // 1. 判断RPC请求是否成功
+        if (!context->success()) {
+            send_error(resp, 500, "服务器内部错误");
+            cerr << "error code: " << context->get_error()
+            << ", error msg: " << context->get_errmsg() << endl;
+            return;
+        }
+
+        // 获取返回结果
+        if(response->code() != 200)
+        {
+            send_error(resp, response->code(), response->msg());
+            return;
+        }
+        json data;
+        data["userId"] = response->user_id();
+        data["username"] = response->username();
+        send_success(resp,response->code(), response->msg(), data);
+    });
+    // 设置请求
+    RegisterRequest srpc_req;
+    srpc_req.set_username(username);
+    srpc_req.set_password(password);
+    task->serialize_input(&srpc_req);
+    // 3. 启动任务（也可以和其它任务一起编排，组成串行流或并行流）
+    series->push_back(task);
+
+    /*
+        // 随机生成盐值
+        string salt = CryptoUtil::generate_salt();
+        // 将盐值与密码哈希
+        string hashcode = CryptoUtil::hash_password(password, salt);
+        // 存入数据库，写一个sql语句
+        string sql = "insert into tbl_user (username,password,salt) values ('"
         + username +"','"
         + hashcode + "','"
         + salt +"');";
-    resp->MySQL(DatabaseURL,sql,[resp,username](MySQLResultCursor *cursor)
+        resp->MySQL(DatabaseURL,sql,[resp,username](MySQLResultCursor *cursor)
         {
-            if(cursor->get_cursor_status() == MYSQL_STATUS_OK && cursor->get_affected_rows()==1)
-            {
-                // 成功
-                json data;
-                data["userId"]= cursor->get_insert_id();
-                data["username"] = username;
-                send_success(resp,201,"注册成功",data);
-            }else {
-                // 失败
-                send_error(resp, 409, "用户名已存在");
-            }
+        if(cursor->get_cursor_status() == MYSQL_STATUS_OK && cursor->get_affected_rows()==1)
+        {
+        // 成功
+        json data;
+        data["userId"]= cursor->get_insert_id();
+        data["username"] = username;
+        send_success(resp,201,"注册成功",data);
+        }else {
+        // 失败
+        send_error(resp, 409, "用户名已存在");
+        }
         });
+        */
 }
 
 // 登录
-void login_handler(const HttpReq *req,HttpResp *resp)
+void login_handler(const HttpReq *req,HttpResp *resp,SeriesWork *series)
 {
     // 判断客户端发送格式
     if(req->content_type() != wfrest::APPLICATION_JSON)
@@ -113,51 +156,94 @@ void login_handler(const HttpReq *req,HttpResp *resp)
     auto &data = req->json();
     string username = data["username"];
     string password = data["password"];
-    // 通过用户名查找hashcode、salt
-    string sql = "select * from tbl_user where username = '" + username +"';";
-
-    resp->MySQL(DatabaseURL,sql,[resp,password](MySQLResultCursor *cursor)
+    if(username.empty() || password.empty())
+    {
+        send_error(resp, 400, "用户名和密码不能为空");
+        return;
+    }
+    // 1. 创建srpc客户端
+    auto &srpcClient = CloudDiskServer::userSRPCClient();
+    // userHandler::SRPCClient client(srpc_ip, srpc_port);
+    // // 2. 创建SRPCClient任务
+    SRPCClientTask* task =srpcClient.create_Login_task ([resp](LoginResponse *response, srpc::RPCContext *context){
+        // 1. 判断RPC请求是否成功
+        if (!context->success()) {
+            send_error(resp, 500, "服务器内部错误");
+            cerr << "error code: " << context->get_error()
+            << ", error msg: " << context->get_errmsg() << endl;
+            return;
+        }
+        // 获取返回结果
+        if(response->code() != 200)
         {
-            if(cursor->get_cursor_status() != MYSQL_STATUS_GET_RESULT ||cursor->get_rows_count()!=1)
-            {
-                send_error(resp, 500, "内部服务器错误");
-                return;
-            }
-            // 获取数据库中的记录
-            vector<MySQLCell> record;
-            if(cursor->fetch_row(record))
-            {
-                User user;
-                user.id = record[0].as_int();
-                user.username = record[1].as_string();
-                user.password = record[2].as_string();
-                user.salt = record[3].as_string();
-                user.createdAt = record[4].as_datetime();
-                // 用户名或密码为空
-                if(user.username.empty() || user.password.empty())
-                {
-                    send_error(resp, 400, "用户名和密码不能为空");
-                }
-                string hashcode = CryptoUtil::hash_password(password, user.salt);
-                if(hashcode == user.password)
-                {
-                    // 密码校对正确，返回token
-                    string token = CryptoUtil::generate_token(user);
-                    json data;
-                    data["accessToken"] = token;
-                    data["tokenType"] = "Bearer";
-                    data["user"]["userId"] = user.id;
-                    data["user"]["username"] = user.username;
-                    send_success(resp, 200, "登录成功", data);
-                    return;
-                }else{
-                    send_error(resp, 401, "用户名或密码错误");
-                }
-            }
-            // 用户不存在/空结果集/密码错误
-            // SQL返回空结果集
-            send_error(resp, 401, "用户名或密码错误");
+            send_error(resp, response->code(), response->msg());
+            return;
+        }
+        json data;
+        data["accessToken"] = response->token();
+        data["tokenType"] = response->tokentype();
+        data["user"]["userId"] = response->user_id();
+        data["user"]["username"] = response->username();
+        send_success(resp,response->code(), response->msg(), data);
+    });
+    // 设置请求
+    LoginRequest srpc_req;
+    srpc_req.set_username(username);
+    srpc_req.set_password(password);
+    task->serialize_input(&srpc_req);
+    // 3. 启动任务（也可以和其它任务一起编排，组成串行流或并行流）
+    // task->start();
+    series->push_back(task);
+    // auto *cleanup = WFTaskFactory::create_timer_task(0,[client](){})
+
+    /*
+        // 通过用户名查找hashcode、salt
+        string sql = "select * from tbl_user where username = '" + username +"';";
+
+        resp->MySQL(DatabaseURL,sql,[resp,password](MySQLResultCursor *cursor)
+        {
+        if(cursor->get_cursor_status() != MYSQL_STATUS_GET_RESULT ||cursor->get_rows_count()!=1)
+        {
+        send_error(resp, 500, "内部服务器错误");
+        return;
+        }
+        // 获取数据库中的记录
+        vector<MySQLCell> record;
+        if(cursor->fetch_row(record))
+        {
+        User user;
+        user.id = record[0].as_int();
+        user.username = record[1].as_string();
+        user.password = record[2].as_string();
+        user.salt = record[3].as_string();
+        user.createdAt = record[4].as_datetime();
+        // 用户名或密码为空
+        if(user.username.empty() || user.password.empty())
+        {
+        send_error(resp, 400, "用户名和密码不能为空");
+        }
+        string hashcode = CryptoUtil::hash_password(password, user.salt);
+        if(hashcode == user.password)
+        {
+        // 密码校对正确，返回token
+        string token = CryptoUtil::generate_token(user);
+        json data;
+        data["accessToken"] = token;
+        data["tokenType"] = "Bearer";
+        data["user"]["userId"] = user.id;
+        data["user"]["username"] = user.username;
+        send_success(resp, 200, "登录成功", data);
+        return;
+        }else{
+        send_error(resp, 401, "用户名或密码错误");
+        }
+        }
+        // 用户不存在/空结果集/密码错误
+        // SQL返回空结果集
+        send_error(resp, 401, "用户名或密码错误");
         });
+        */
+
 }
 
 void user_handler(const HttpReq *req,HttpResp *resp)

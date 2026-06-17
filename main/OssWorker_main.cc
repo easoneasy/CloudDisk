@@ -20,7 +20,6 @@ int main(int argc,char *argv[])
     // signal(SIGINT, sig_handler);
     // 初始化Rabbit消费者
     RabbitMQ::getInstance().startConsumer();
-    cout << "OSS worker start ..." << endl;
     while(1)
     {
         auto env = RabbitMQ::getInstance().RabbitConsumer();

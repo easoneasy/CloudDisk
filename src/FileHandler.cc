@@ -3,6 +3,7 @@
 #include "../include/CryptoUtil.h"
 #include "../include/OssManager.h"
 #include "../include/RabbitMQ.h"
+#include <srpc/rpc_define.h>
 #include <wfrest/HttpServer.h>
 #include <wfrest/HttpDef.h>
 #include <wfrest/HttpMsg.h>
@@ -86,38 +87,78 @@ static bool ensure_storage_dir()
 }
 
 
-void file_list_handler(const HttpReq *req,HttpResp *resp)
+void file_list_handler(const HttpReq *req,HttpResp *resp,SeriesWork *series)
 {
     // 验证身份+token
     int uid = verify_token(req, resp);
     if(uid == -1){return;}
 
-    // 拼接sql语句，查询文件信息
-    string sql = "select * from tbl_file where uid = '" + to_string(uid) + "';";
-    resp->MySQL(DatabaseURL,sql,[resp](MySQLResultCursor *cursor)
+    // 创建fileSRPC客户端
+    auto &srpcClient = CloudDiskServer::fileSRPCClient();
+    // 创建SRPC任务
+    srpc::SRPCClientTask *task = srpcClient.create_fileInfo_task([resp,uid](fileListResponse* response, srpc::RPCContext* context)
         {
-            if(cursor->get_cursor_status()!=MYSQL_STATUS_GET_RESULT)
-            {
+            // 判断RPC请求是否成功
+            if (!context->success()) {
                 send_error(resp, 500, "服务器内部错误");
+                cerr << "error code: " << context->get_error()
+                << ", error msg: " << context->get_errmsg() << endl;
+                return;
+            }
+            // 获取返回结果
+            if(response->code() != 200)
+            {
+                send_error(resp, response->code(), response->msg());
                 return;
             }
             json files = json::array();
-            vector<MySQLCell> record;
-            while(cursor->fetch_row(record))
+            for(const auto &file : response->files())
             {
                 json f;
-                f["fileId"] = record[0].as_int();
-                f["filename"] = record[2].as_string();
-                f["size"] = record[4].as_int();
-                f["createdAt"] = record[5].as_datetime();
-                f["updatedAt"] = record[6].as_datetime();
+                f["fileId"] = file.fileid();
+                f["filename"] = file.filename();
+                f["size"] = file.filesize();
+                f["createdAt"] = file.createdat();
+                f["updatedAt"] = file.updatedat();
                 files.push_back(f);
-                record.clear();
             }
             json data;
             data["files"] = files;
-            send_success(resp, 200, "获取文件列表成功", data);
+            send_success(resp, response->code(), response->msg(), data);
         });
+    // 设置请求
+    fileInfoRequest srpc_req;
+    srpc_req.set_uid(uid);
+    task->serialize_input(&srpc_req);
+    // 3. 启动任务（也可以和其它任务一起编排，组成串行流或并行流）
+    series->push_back(task);
+
+    // // 拼接sql语句，查询文件信息
+    // string sql = "select * from tbl_file where uid = '" + to_string(uid) + "';";
+    // resp->MySQL(DatabaseURL,sql,[resp](MySQLResultCursor *cursor)
+    //     {
+    //         if(cursor->get_cursor_status()!=MYSQL_STATUS_GET_RESULT)
+    //         {
+    //             send_error(resp, 500, "服务器内部错误");
+    //             return;
+    //         }
+    //         json files = json::array();
+    //         vector<MySQLCell> record;
+    //         while(cursor->fetch_row(record))
+    //         {
+    //             json f;
+    //             f["fileId"] = record[0].as_int();
+    //             f["filename"] = record[2].as_string();
+    //             f["size"] = record[4].as_int();
+    //             f["createdAt"] = record[5].as_datetime();
+    //             f["updatedAt"] = record[6].as_datetime();
+    //             files.push_back(f);
+    //             record.clear();
+    //         }
+    //         json data;
+    //         data["files"] = files;
+    //         send_success(resp, 200, "获取文件列表成功", data);
+    //     });
 }
 void file_upload_handler(const HttpReq *req,HttpResp *resp)
 {
@@ -156,10 +197,10 @@ void file_upload_handler(const HttpReq *req,HttpResp *resp)
     ensure_storage_dir();
     // 本地存储文件
     string basename = STORAGE_DIR +"/" + hashcode;
-    cout << "[basename]" << basename << endl;
     resp->Save(basename,file_data);
 
     // 发送消息队列
+    //
     bool isSend = RabbitMQ::getInstance().RabbitProducer(hashcode, basename);
     if(!isSend)
     {

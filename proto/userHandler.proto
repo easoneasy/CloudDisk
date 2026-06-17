@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+// 注册
+// 定义请求消息
+message RegisterRequest
+{
+    string username = 1;
+    string password = 2;
+};
+
+// 定义响应消息
+message RegisterResponse
+{
+    int32 user_id = 1;    // 返回用户id
+    string username = 2;  // 返回username
+    int32 code = 3;       // 返回插入成功/失败代码
+    string msg = 4;
+};
+
+// 登录
+message LoginRequest
+{
+    string username = 1;
+    string password = 2;
+};
+message LoginResponse
+{
+    int32 user_id = 1;
+    string username = 2;
+    string tokenType = 3;
+    string token = 4;
+    int32 code = 5;
+    string msg = 6;
+};
+
+// 用户信息
+message UserInfoRequest
+{
+    int32 user_id = 1;
+};
+message UserInfoResponse
+{
+    int32 user_id = 1;
+    string username = 2;
+    string createdAt = 3;
+    int32 code = 4;
+    string msg = 5;
+};
+
+service userHandler
+    {
+    rpc Register(RegisterRequest)
+        returns (RegisterResponse);
+    rpc Login(LoginRequest)
+        returns (LoginResponse);
+    rpc UserInfo(UserInfoRequest)
+        returns (UserInfoResponse);
+}

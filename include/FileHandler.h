@@ -5,7 +5,7 @@ using namespace std;
 using namespace wfrest;
 
 // 查看文件列表
-void file_list_handler(const HttpReq *req,HttpResp *resp);
+void file_list_handler(const HttpReq *req,HttpResp *resp,SeriesWork *series);
 
 // 上传文件
 void file_upload_handler(const HttpReq *req,HttpResp *resp);

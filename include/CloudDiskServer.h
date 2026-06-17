@@ -1,4 +1,10 @@
 #pragma once
+#include "../include/userHandler.srpc.h"
+#include "../include/fileHandler.srpc.h"
+#include "../include/ConsulManager.h"
+#include "ConsulManager.h"
+#include "userHandler.srpc.h"
+#include <stdexcept>
 #include <wfrest/HttpServer.h>
 #include <iostream>
 
@@ -34,6 +40,31 @@ class CloudDiskServer {
         void stop() { server_.stop(); }
 
         void list_routes() { server_.list_routes(); }
+
+        // 获取SRPC客户端
+        static userHandler::SRPCClient &userSRPCClient()
+        {
+            auto node = ConsulManager::getInstance().discoverService("user-service");
+            static userHandler::SRPCClient client(node.host.c_str(),node.port);
+            // 判断是否获取ip、port成功
+            if(node.host.empty())
+            {
+                throw runtime_error("user-service not found");
+            }
+            return client;
+        }
+        // 获取fileSRPC客户端
+        static fileHandler::SRPCClient &fileSRPCClient()
+        {
+            auto node = ConsulManager::getInstance().discoverService("file-service");
+            static fileHandler::SRPCClient client(node.host.c_str(),node.port);
+            // 判断是否获取ip、port成功
+            if(node.host.empty())
+            {
+                throw runtime_error("file-service not found");
+            }
+            return client;
+        }
 
     private:
         // 注册路由

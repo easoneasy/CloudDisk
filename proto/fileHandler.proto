@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+// 定义请求消息
+message fileInfoRequest
+{
+    int32 uid = 1;
+};
+
+// 定义响应消息
+message fileInfo
+{
+    int32 fileId = 3;
+    string filename = 4;
+    int32 filesize = 5;
+    string createdAt = 6;
+    string updatedAt = 7;
+};
+message fileListResponse
+{
+    int32 code = 1;
+    string msg = 2;
+    // repeated 可以一次发送多条files
+    // files相当于 code、msg是变量名
+    // fileInfo 是类型，上述定义的fileInfo类型
+    repeated fileInfo files = 3;
+};
+service fileHandler
+    {
+    rpc fileInfo(fileInfoRequest)
+        returns (fileListResponse);
+}
