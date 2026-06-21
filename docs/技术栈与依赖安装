@@ -1,0 +1,405 @@
+# CloudDisk 技术栈与依赖安装
+
+## 一、技术栈总览
+
+| 层级 | 技术 | 版本需求 | 用途 |
+|------|------|----------|------|
+| **语言** | C++ | C++17 | 核心开发语言 |
+| **构建** | CMake | >= 3.15 | 跨平台构建系统 |
+| **HTTP** | wfrest | — | HTTP 服务框架（路由、中间件、静态文件、表单解析） |
+| **异步引擎** | Sogou Workflow | — | 异步网络 IO、任务编排、MySQL/定时器任务 |
+| **RPC** | srpc | — | Protobuf RPC 框架（服务端/客户端代码生成） |
+| **序列化** | Protocol Buffers | 3.x (proto3) | 跨语言结构化数据序列化 |
+| **数据库** | MySQL | 8.0+ | 关系型数据库 |
+| **服务发现** | Consul | 1.x | 服务注册、健康检查、动态发现 |
+| **Consul 客户端** | ppconsul | — | Consul HTTP API 的 C++ 封装 |
+| **消息队列** | RabbitMQ | 3.x | 异步消息传递 |
+| **AMQP 客户端** | SimpleAmqpClient | — | RabbitMQ C++ 客户端（基于 rabbitmq-c） |
+| **对象存储** | 阿里云 OSS C++ SDK | 1.x | 文件上传/下载到阿里云 OSS |
+| **HTTP 传输** | libcurl | 7.x | OSS SDK 底层 HTTP 传输 |
+| **加密** | OpenSSL | 3.0+ | SHA-256 哈希（EVP 接口） |
+| **JWT** | libjwt | 1.x | JSON Web Token 签发与验证 |
+| **JSON** | nlohmann/json | 3.x | JSON 解析与序列化 |
+| **压缩** | LZ4, Snappy | — | RPC 框架内部压缩传输 |
+| **前端** | HTML5 / CSS3 / JavaScript | — | 单页应用（SPA） |
+
+---
+
+## 二、系统依赖安装
+
+### 2.1 Ubuntu / Debian
+
+```bash
+# 基础编译工具
+sudo apt update
+sudo apt install -y build-essential cmake g++ git pkg-config
+
+# 数据库
+sudo apt install -y mysql-server libmysqlclient-dev
+
+# 加密与 JWT
+sudo apt install -y libssl-dev libjwt-dev
+
+# Protobuf
+sudo apt install -y libprotobuf-dev protobuf-compiler
+
+# 压缩库
+sudo apt install -y liblz4-dev libsnappy-dev
+
+# HTTP 传输 (OSS SDK 依赖)
+sudo apt install -y libcurl4-openssl-dev
+
+# 消息队列服务
+sudo apt install -y rabbitmq-server
+
+# 工具
+sudo apt install -y nlohmann-json3-dev   # 若无则从 GitHub 下载 header-only
+```
+
+### 2.2 CentOS / Rocky Linux
+
+```bash
+# 基础编译工具
+sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y cmake gcc-c++ git pkgconfig
+
+# 数据库
+sudo dnf install -y mysql-server mysql-devel
+
+# 加密与 JWT
+sudo dnf install -y openssl-devel libjwt-devel
+
+# Protobuf
+sudo dnf install -y protobuf-devel protobuf-compiler
+
+# 压缩库
+sudo dnf install -y lz4-devel snappy-devel
+
+# HTTP 传输
+sudo dnf install -y libcurl-devel
+
+# 消息队列
+sudo dnf install -y rabbitmq-server
+```
+
+### 2.3 macOS (Homebrew)
+
+```bash
+brew install cmake mysql protobuf openssl jwt-cpp lz4 snappy curl rabbitmq nlohmann-json
+```
+
+---
+
+## 三、核心 C++ 库安装（源码编译）
+
+以下库通常没有发行版预编译包，需要从 GitHub 源码编译安装。
+
+### 3.1 Sogou Workflow（异步引擎）
+
+```bash
+git clone https://github.com/sogou/workflow.git
+cd workflow
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+> Workflow 是整个异步架构的核心，wfrest 和 srpc 都依赖它。
+
+### 3.2 wfrest（HTTP 框架）
+
+```bash
+git clone https://github.com/wfrest/wfrest.git
+cd wfrest
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+### 3.3 srpc（RPC 框架）
+
+```bash
+git clone https://github.com/sogou/srpc.git
+cd srpc
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+> srpc 会自动生成 `.srpc.h` 文件，在 `include/` 目录中可以看到 `userHandler.srpc.h` 和 `fileHandler.srpc.h`，它们是 proto 文件经 srpc 代码生成器产出的。
+
+### 3.4 ppconsul（Consul C++ 客户端）
+
+```bash
+git clone https://github.com/oliora/ppconsul.git
+cd ppconsul
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+### 3.5 SimpleAmqpClient（RabbitMQ C++ 客户端）
+
+SimpleAmqpClient 依赖 `rabbitmq-c`，需先安装：
+
+```bash
+# 先安装 rabbitmq-c
+git clone https://github.com/alanxz/rabbitmq-c.git
+cd rabbitmq-c
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+sudo make install
+cd ../..
+
+# 再安装 SimpleAmqpClient
+git clone https://github.com/alanxz/SimpleAmqpClient.git
+cd SimpleAmqpClient
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+### 3.6 阿里云 OSS C++ SDK
+
+```bash
+git clone https://github.com/aliyun/aliyun-oss-cpp-sdk.git
+cd aliyun-oss-cpp-sdk
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+### 3.7 nlohmann/json（Header-only，可选）
+
+如果系统未提供包：
+
+```bash
+# 直接下载头文件
+sudo mkdir -p /usr/local/include/nlohmann
+sudo wget -O /usr/local/include/nlohmann/json.hpp \
+    https://github.com/nlohmann/json/releases/latest/download/json.hpp
+```
+
+---
+
+## 四、基础设施服务部署
+
+### 4.1 MySQL
+
+```bash
+# 启动
+sudo systemctl start mysql
+sudo systemctl enable mysql
+
+# 初始化数据库
+mysql -u root -p <<EOF
+CREATE DATABASE IF NOT EXISTS CloudDisk;
+USE CloudDisk;
+
+CREATE TABLE IF NOT EXISTS tbl_user (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(64) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    salt VARCHAR(32) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tbl_file (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    uid INT NOT NULL,
+    filename VARCHAR(255) NOT NULL,
+    hashcode VARCHAR(255) NOT NULL,
+    size BIGINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (uid) REFERENCES tbl_user(id)
+);
+EOF
+```
+
+> 注意：代码中硬编码了数据库连接串 `mysql://root:123456@localhost/CloudDisk`，请确保 MySQL 的 root 密码为 `123456`，或修改源码中的 `DatabaseURL` 常量。
+
+### 4.2 Consul
+
+```bash
+# 开发模式（单节点，不持久化）
+consul agent -dev -bind=127.0.0.1 &
+
+# 生产模式（集群部署）
+consul agent -server -bootstrap-expect=1 \
+    -data-dir=/tmp/consul \
+    -bind=127.0.0.1 \
+    -client=0.0.0.0 &
+```
+
+> Consul 默认监听 `127.0.0.1:8500`，与代码中 `ConsulManager` 构造函数配置一致。
+
+### 4.3 RabbitMQ
+
+```bash
+# 启动服务
+sudo systemctl start rabbitmq-server
+sudo systemctl enable rabbitmq-server
+
+# 启用管理插件（可选，用于 Web 管理界面）
+sudo rabbitmq-plugins enable rabbitmq_management
+
+# 管理界面访问 http://localhost:15672 （默认 guest/guest）
+```
+
+> 代码中默认连接 `amqp://guest:guest@localhost:5672/%2f`。如果是首次使用 RabbitMQ，需创建交换机和队列（代码中使用的交换机 `oss.direct` 和队列 `oss.queue` 需要手动创建或通过程序自动创建）：
+
+```bash
+# 手动创建交换机、队列和绑定
+rabbitmqadmin declare exchange name=oss.direct type=direct
+rabbitmqadmin declare queue name=oss.queue durable=true
+rabbitmqadmin declare binding source=oss.direct destination=oss.queue routing_key=oss
+```
+
+---
+
+## 五、阿里云 OSS 配置
+
+编辑项目根目录的 `config.json`：
+
+```json
+{
+    "endpoint": "oss-cn-wuhan-lr.aliyuncs.com",
+    "accessKeyId": "你的 AccessKeyId",
+    "accessKeySecret": "你的 AccessKeySecret",
+    "bucketName": "你的 Bucket 名称",
+    "region": "cn-wuhan"
+}
+```
+
+> ⚠️ **安全提醒**：`config.json` 中包含敏感凭证，已被 `.gitignore` 排除（`*.json`），切勿提交到版本控制。
+
+---
+
+## 六、快速验证依赖是否就绪
+
+```bash
+# 检查关键头文件是否存在
+ls /usr/local/include/workflow/Workflow.h          # Sogou Workflow
+ls /usr/local/include/wfrest/HttpServer.h           # wfrest
+ls /usr/local/include/srpc/rpc_define.h             # srpc
+ls /usr/local/include/ppconsul/consul.h             # ppconsul
+ls /usr/local/include/SimpleAmqpClient/Channel.h    # SimpleAmqpClient
+ls /usr/local/include/alibabacloud/oss/OssClient.h  # 阿里云 OSS SDK
+ls /usr/local/include/nlohmann/json.hpp             # nlohmann/json
+
+# 检查关键库文件是否存在
+ldconfig -p | grep -E "libworkflow|libwfrest|libsrpc|libppconsul|libSimpleAmqpClient"
+
+# 检查基础服务
+systemctl status mysql
+systemctl status rabbitmq-server
+consul members
+```
+
+---
+
+## 七、CMake 构建配置详解
+
+`CMakeLists.txt` 中定义了 4 个编译目标及其依赖关系：
+
+```
+                    ┌─────────────┐
+                    │   CloudDisk  │  (项目名)
+                    └──────┬──────┘
+       ┌───────────────────┼──────────────────────┐
+       │                   │                      │
+  ┌────▼─────┐      ┌──────▼──────┐      ┌───────▼────────┐
+  │  server  │      │ userServer  │      │ oss_consumer   │
+  │ :8888    │      │ :8001       │      │ (无端口)        │
+  └──────────┘      └─────────────┘      └────────────────┘
+       │                   │                      │
+  ┌────▼─────────┐         │       ┌──────────────┼──────────────┐
+  │ fileServer   │         │       │ crypto ssl jwt               │
+  │ :8002        │         │       │ alibabacloud-oss-cpp-sdk     │
+  └──────────────┘         │       │ curl SimpleAmqpClient        │
+                           │       └─────────────────────────────┘
+  ┌────────────────────────┼──────────────────────────┐
+  │ srpc workflow protobuf │ srpc workflow protobuf   │
+  │ mysqlclient            │ mysqlclient               │
+  │ crypto ssl jwt         │ crypto ssl jwt            │
+  │ ppconsul               │ ppconsul                  │
+  │ lz4 snappy pthread     │ lz4 snappy pthread        │
+  └────────────────────────┴──────────────────────────┘
+```
+
+编译选项说明：
+- `-std=c++17`: 使用 C++17 标准
+- `-g`: 保留调试符号
+- `-fno-rtti`: 禁用运行时类型识别（减小二进制体积，srpc/workflow 通常要求关闭）
+
+---
+
+## 八、构建与运行
+
+```bash
+# 构建
+./build.sh
+# 或: mkdir build && cd build && cmake .. && make -j$(nproc) && cd ..
+
+# 产物
+ls -la server userServer fileServer oss_consumer
+
+# 启动顺序
+consul agent -dev &                        # 1. 服务发现
+sudo systemctl start rabbitmq-server       # 2. 消息队列
+sudo systemctl start mysql                 # 3. 数据库
+./userServer &                             # 4. 用户微服务 :8001
+./fileServer &                             # 5. 文件微服务 :8002
+./server &                                 # 6. HTTP 网关 :8888
+./oss_consumer &                           # 7. OSS Worker（可选）
+
+# 验证
+curl http://localhost:8888/                # 应返回 index.html
+curl http://localhost:8500/v1/agent/services  # 应看到注册的服务
+```
+
+---
+
+## 九、常见问题
+
+### 编译错误：找不到头文件
+
+```bash
+# 确保 CMake 能找到已安装的库
+export CMAKE_PREFIX_PATH=/usr/local:$CMAKE_PREFIX_PATH
+# 或通过 vcpkg 统一管理依赖
+```
+
+### 运行时：`user-service not found`
+
+检查 Consul 中是否有健康的服务实例：
+```bash
+curl http://localhost:8500/v1/health/service/user-service?passing
+```
+确保 `userServer` 已启动并注册成功。
+
+### 上传文件后 OSS 没有文件
+
+检查 `oss_consumer` 进程是否在运行，RabbitMQ 队列是否有积压：
+```bash
+sudo rabbitmqctl list_queues name messages
+```
+
+### MySQL 连接失败
+
+确认 MySQL 中 root 密码为 `123456`，或修改源码中 `DatabaseURL` 常量（分布在各 `.cc` 文件中）并重新编译。
+`
